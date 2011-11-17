@@ -1,4 +1,5 @@
 require 'fileutils'
+require 'socket'
 
 module ZK
   class ZookeeperServer
@@ -6,7 +7,12 @@ module ZK
     ZKHOME = File.dirname(__FILE__) + "/zookeeper-3.3.3"
 
     def self.running?
-      pid = `cat #{@@data_dir}/zookeeper_server.pid`
+      @@pid_file = @@data_dir + "/zookeeper_server.pid"
+      return false if !File.exist? @@pid_file
+
+      pid = `cat #{@@pid_file}`
+      return false if $?.exitstatus != 0
+
       `ps ax | grep #{pid}`
       $?.exitstatus == 0
     end
@@ -20,17 +26,18 @@ module ZK
         thread = Thread.new do
           `cd #{ZKHOME} && ./bin/zkServer.sh start`
         end
+        sleep 1
       else
         `cd #{ZKHOME} && ./bin/zkServer.sh start`
       end
+
+      nil
     end
 
     def self.wait_til_started
       while !running?
         sleep 1
       end
-      # make sure zookeeper is really ready
-      sleep 2
     end
 
     def self.wait_til_stopped
@@ -41,11 +48,56 @@ module ZK
 
     def self.stop
       `cd #{ZKHOME} && ./bin/zkServer.sh stop`
-      # FileUtils.remove_dir(@@data_dir, true)
+      FileUtils.rm @@pid_file if File.exist? @@pid_file
+
     end
 
-    def self.status
-      `cd #{ZKHOME} && ./bin/zkServer.sh status`
+    def self.status(host="localhost", port=2181)
+      retryable(:tries => 3, :on => Exception) do
+        read_stat(host, port)
+      end
+    end
+
+    # =======
+    private
+    # =======
+
+    #
+    # Read Zookeeper status from socket
+    #
+    def self.read_stat(host, port)
+      stat = {}
+      s = TCPSocket.open(host, port)
+      s.puts("stat")
+
+      while line = s.gets   # Read lines from the socket
+        if line =~ /^\S/ then 
+          k,v = line.split(":")
+          k.downcase!
+          k.strip!
+          v.strip!
+          stat[k] = v
+        end
+      end
+      s.close
+      stat
+    end
+
+    #
+    # Retry on exception
+    #
+    def self.retryable(options = {}, &block)
+      opts = { :tries => 1, :on => Exception }.merge(options)
+
+      retry_exception, retries = opts[:on], opts[:tries]
+
+      begin
+        return yield
+      rescue retry_exception
+        retry if (retries -= 1) > 0
+      end
+
+      yield
     end
 
     def self.set_log_level
