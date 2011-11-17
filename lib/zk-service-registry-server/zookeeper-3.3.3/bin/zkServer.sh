@@ -88,7 +88,7 @@ stop)
     exit 1
     else
     $KILL -9 $(cat "$ZOOPIDFILE")
-    rm "$ZOOPIDFILE"
+    rm -f "$ZOOPIDFILE"
     echo STOPPED
     fi
     ;;

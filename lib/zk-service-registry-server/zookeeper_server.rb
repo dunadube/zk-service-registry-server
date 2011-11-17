@@ -7,28 +7,31 @@ module ZK
     ZKHOME = File.dirname(__FILE__) + "/zookeeper-3.3.3"
 
     def self.running?
-      @@pid_file = @@data_dir + "/zookeeper_server.pid"
-      return false if !File.exist? @@pid_file
+      return false if !File.exist? pid_file
 
-      pid = `cat #{@@pid_file}`
+      pid = `cat #{pid_file}`
       return false if $?.exitstatus != 0
 
       `ps ax | grep #{pid}`
       $?.exitstatus == 0
     end
 
-    def self.start(background=true)
+    def self.start(config_dir=nil, background=true)
       set_log_level
-      @@data_dir = "#{ZKHOME}/data/localhost"
-      FileUtils.remove_dir(@@data_dir, true)
-      FileUtils.mkdir_p(@@data_dir)
+
+      export_zoo_cfg = ""
+      export_zoo_cfg = "export ZOOCFGDIR='#{config_dir}' && " if !config_dir.nil?
+
+      FileUtils.remove_dir(data_dir, true)
+      FileUtils.mkdir_p(data_dir)
+
       if background
         thread = Thread.new do
-          `cd #{ZKHOME} && ./bin/zkServer.sh start`
+          `#{export_zoo_cfg} cd #{ZKHOME} && ./bin/zkServer.sh start`
         end
         sleep 1
       else
-        `cd #{ZKHOME} && ./bin/zkServer.sh start`
+        `#{export_zoo_cfg} cd #{ZKHOME} && ./bin/zkServer.sh start`
       end
 
       nil
@@ -48,8 +51,7 @@ module ZK
 
     def self.stop
       `cd #{ZKHOME} && ./bin/zkServer.sh stop`
-      FileUtils.rm @@pid_file if File.exist? @@pid_file
-
+      # FileUtils.rm pid_file if File.exist? pid_file
     end
 
     def self.status(host="localhost", port=2181)
@@ -61,6 +63,14 @@ module ZK
     # =======
     private
     # =======
+
+    def self.data_dir
+      "#{ZKHOME}/data/localhost"
+    end
+
+    def self.pid_file
+      data_dir + "/zookeeper_server.pid"
+    end
 
     #
     # Read Zookeeper status from socket
