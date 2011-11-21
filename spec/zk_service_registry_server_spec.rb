@@ -26,14 +26,14 @@ describe ZK::ZookeeperServer do
   context "when i want to use a different configuration (port)" do
 
     it "should be possible to specify a config file on start" do
-      config_file = File.dirname(__FILE__) + "/../lib/zk-service-registry-server/zookeeper-3.3.3/conf_alt"
+      config_dir = File.dirname(__FILE__) + "/zoo_alternative_cfg"
 
-      ZK::ZookeeperServer.start(config_file)
+      ZK::ZookeeperServer.start(config_dir)
       ZK::ZookeeperServer.wait_til_started
 
       ZK::ZookeeperServer.status("localhost", 2182)["mode"].should eql("standalone")
 
-      ZK::ZookeeperServer.stop
+      ZK::ZookeeperServer.stop(config_dir)
       ZK::ZookeeperServer.wait_til_stopped
       ZK::ZookeeperServer.running?.should eql(false)
     end

@@ -49,8 +49,11 @@ module ZK
       end
     end
 
-    def self.stop
-      `cd #{ZKHOME} && ./bin/zkServer.sh stop`
+    def self.stop(config_dir=nil)
+      export_zoo_cfg = ""
+      export_zoo_cfg = "export ZOOCFGDIR='#{config_dir}' && " if !config_dir.nil?
+
+      `#{export_zoo_cfg} cd #{ZKHOME} && ./bin/zkServer.sh stop`
       # FileUtils.rm pid_file if File.exist? pid_file
     end
 
