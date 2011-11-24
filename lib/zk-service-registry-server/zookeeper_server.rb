@@ -45,8 +45,6 @@ module ZK
     end
 
     def alive?(pid)
-      return false if pid.nil?
-
       begin
         Process.kill(0, pid)
         true
@@ -56,7 +54,7 @@ module ZK
     end
 
     def read_pid(pidfile)
-      return nil if !File.exists?(pidfile)
+      raise ArgumentError.new("Pidfile #{pidfile} does not exist") if !File.exists?(pidfile)
 
       read_file(pidfile).strip.to_i
     end
@@ -77,8 +75,11 @@ module ZK
     def self.running?(opts = {})
       pid_dir = "#{ZKHOME}/data/localhost"
       pid_dir = opts[:pid_dir] if opts[:pid_dir]
+      pid_file = pid_dir + "/#{ZKPidFileName}"
 
-      alive?(read_pid(pid_dir + "/#{ZKPidFileName}"))
+      return false if !File.exists? pid_file
+
+      alive?(read_pid(pid_file))
     end
 
     #

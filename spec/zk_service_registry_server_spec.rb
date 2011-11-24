@@ -32,7 +32,7 @@ describe ZK::ZookeeperServer do
       cfg["server.2"] = "zoo2:2888:3888"
       cfg["server.3"] = "zoo3:2888:3888"
 
-      opts            = { :myid = > "1" }
+      opts            = { :myid => "1" }
       opts[:conf_dir] = File.expand_path(File.dirname(__FILE__)) + "/zoo_ensemble_cfg"
 
       ZK::ZookeeperServer.start(cfg, opts)
