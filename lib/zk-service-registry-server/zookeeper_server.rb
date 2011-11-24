@@ -90,7 +90,9 @@ module ZK
     #   http://zookeeper.apache.org/doc/r3.3.3/zookeeperAdmin.html for details.
     #   NOTE: By default the pid file will be written to the data directory.
     # - opts: additional options if you want to change log (:log_dir) or config 
-    #   (:conf_dir) or pid (:pid_dir) directories . NOTE: Please use ABSOLUTE paths
+    #   (:conf_dir) directories . NOTE: Please use ABSOLUTE paths
+    #   opts also holds the server id (:myid) when running zookeeper in an ensemble
+    #   configuration.
     #
     # # Returns: 
     #   the pid of the Zookeeper process if successful
@@ -110,7 +112,7 @@ module ZK
       zoocfgdir     = opts[:conf_dir] || "#{ZKHOME}/conf"
       zoocfg        = "zoo.cfg"
       zoocfgpath    = "#{zoocfgdir}/#{zoocfg}"
-      pid_file      = opts[:pid_dir] || "#{data_dir}/zookeeper.pid"
+      pid_file      = "#{data_dir}/" + ZKPidFileName
 
       # JAVA stuff
       root_logger   = "INFO,CONSOLE"
@@ -129,6 +131,14 @@ module ZK
       # write the zookeeper config file
       write_file(zoocfgpath, cfg)
 
+      # if running in an ensemble then
+      # write the myid file to the data directory
+      if opts[:myid] then
+        raise ArgumentError.new("You must include initLimit in cfg when running an ensemble") if !cfg.include? :initLimit
+        raise ArgumentError.new("You must include syncLimit in cfg when running an ensemble") if !cfg.include? :syncLimit
+        write_file(data_dir + "/myid", opts[:myid]) 
+      end
+
       # run the command
       io = IO.popen(cmd, "r")
       write_file(pid_file, io.pid)
@@ -146,13 +156,13 @@ module ZK
     # Stop the process using the pid from the pidfile
     # 
     # Parameters:
-    # - opts is a hash of options. Use :pid_dir to specify the location
+    # - opts is a hash of options. Use :dataDir to specify the location
     #   of the pid file if you used a different location on startup.
     #   NOTE: Use ABSOLUTE paths
     #
     def self.stop(opts = {})
       pid_dir = "#{ZKHOME}/data/localhost"
-      pid_dir = opts[:pid_dir] if opts[:pid_dir]
+      pid_dir = opts[:dataDir] if opts[:dataDir]
 
       kill_if_running(pid_dir + "/#{ZKPidFileName}", :force => true)
     end
@@ -185,7 +195,7 @@ module ZK
           k,v = line.split(":")
           k.downcase!
           k.strip!
-          v.strip!
+          v.strip! if !v.nil?
           stat[k] = v
         end
       end

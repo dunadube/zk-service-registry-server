@@ -22,7 +22,23 @@ describe ZK::ZookeeperServer do
   end
 
   context "when i want to run Zookeeper in an ensemble configuration" do
-    it "should be possible to give it a custom configuration" do
+
+    it "should be possible to specify an ensemble configuration" do
+      cfg             = {}
+      cfg[:dataDir]   = File.expand_path(File.dirname(__FILE__)) + "/zoo_ensemble_cfg/data"
+      cfg[:initLimit] = 5
+      cfg[:syncLimit] = 2
+      cfg["server.1"] = "zoo1:2888:3888"
+      cfg["server.2"] = "zoo2:2888:3888"
+      cfg["server.3"] = "zoo3:2888:3888"
+
+      opts            = { :myid = > "1" }
+      opts[:conf_dir] = File.expand_path(File.dirname(__FILE__)) + "/zoo_ensemble_cfg"
+
+      ZK::ZookeeperServer.start(cfg, opts)
+      ZK::ZookeeperServer.status
+      ZK::ZookeeperServer.stop(cfg)
+      ZK::ZookeeperServer.running?.should eql(false)
     end
   end
 
