@@ -2,63 +2,168 @@ require 'fileutils'
 require 'socket'
 
 module ZK
-  class ZookeeperServer
+  module Utils
 
-    ZKHOME = File.dirname(__FILE__) + "/zookeeper-3.3.3"
+    def write_file(fn, c)
+      if c.kind_of? Hash
+        File.open(fn, 'w') do |f|
+          c.each_pair do |k, v|
 
-    def self.running?
-      return false if !File.exist? pid_file
-
-      pid = `cat #{pid_file}`
-      return false if $?.exitstatus != 0
-
-      `ps ax | grep #{pid}`
-      $?.exitstatus == 0
+            f.puts("#{k}=#{v}") 
+          end
+        end 
+      else
+        File.open(fn, 'w') {|f| f.write(c) }
+      end
     end
 
-    def self.start(config_dir=nil, background=true)
-      set_log_level
+    def read_file(fn)
+      begin
+        file = File.open(fn, "r")
+        res = file.read
+      rescue
+        file.close if file
+        res
+      end
+    end
 
-      export_zoo_cfg = ""
-      export_zoo_cfg = "export ZOOCFGDIR='#{config_dir}' && " if !config_dir.nil?
+    def kill_if_running(pidfile, opts = {})
+      return if !File.exists?(pidfile)
 
-      FileUtils.remove_dir(data_dir, true)
+      pid = read_pid(pidfile)
+      File.delete(pidfile)
+
+      return if !alive?(pid)
+
+      Process.kill(15, pid)
+
+      (1..5).each do
+        return if !alive?(pid)
+        sleep 1
+      end
+      Process.kill(9, pid)
+    end
+
+    def alive?(pid)
+      return false if pid.nil?
+
+      begin
+        Process.kill(0, pid)
+        true
+      rescue Errno::ESRCH
+        false
+      end
+    end
+
+    def read_pid(pidfile)
+      return nil if !File.exists?(pidfile)
+
+      read_file(pidfile).strip.to_i
+    end
+
+  end
+
+  class ZookeeperServer
+    extend Utils
+
+    # zookeeper home directory
+    ZKHOME = File.expand_path(File.dirname(__FILE__)) + "/zookeeper-3.3.3"
+    # zookeeper pid file
+    ZKPidFileName = "zookeeper.pid"
+
+    # 
+    # Check if the zookeeper process is running
+    #
+    def self.running?(opts = {})
+      pid_dir = "#{ZKHOME}/data/localhost"
+      pid_dir = opts[:pid_dir] if opts[:pid_dir]
+
+      alive?(read_pid(pid_dir + "/#{ZKPidFileName}"))
+    end
+
+    #
+    # Start the Zookeeper Service and create a pid file if successful
+    #
+    # # Parameters:
+    # - cfg: Zookeeper configuration as hash. The contents of the hash 
+    #   will be written to file (zoo.cfg by default). See
+    #   http://zookeeper.apache.org/doc/r3.3.3/zookeeperAdmin.html for details.
+    #   NOTE: By default the pid file will be written to the data directory.
+    # - opts: additional options if you want to change log (:log_dir) or config 
+    #   (:conf_dir) or pid (:pid_dir) directories . NOTE: Please use ABSOLUTE paths
+    #
+    # # Returns: 
+    #   the pid of the Zookeeper process if successful
+    #
+    def self.start(cfg = {}, opts = {})
+      cfg = {:tickTime => 2000, :clientPort => 2181}.merge!(cfg)
+      opts = {:wait_start => true}.merge!(opts)
+
+      # set the parameters
+      # the data directory goes into the zoo.cfg file
+      data_dir      = cfg[:dataDir] || "#{ZKHOME}/data/localhost"
+      cfg[:dataDir] = data_dir
       FileUtils.mkdir_p(data_dir)
 
-      if background
-        thread = Thread.new do
-          `#{export_zoo_cfg} cd #{ZKHOME} && ./bin/zkServer.sh start`
-        end
-        sleep 1
-      else
-        `#{export_zoo_cfg} cd #{ZKHOME} && ./bin/zkServer.sh start`
+      # directories
+      log_dir       = opts[:log_dir] || "#{ZKHOME}"
+      zoocfgdir     = opts[:conf_dir] || "#{ZKHOME}/conf"
+      zoocfg        = "zoo.cfg"
+      zoocfgpath    = "#{zoocfgdir}/#{zoocfg}"
+      pid_file      = opts[:pid_dir] || "#{data_dir}/zookeeper.pid"
+
+      # JAVA stuff
+      root_logger   = "INFO,CONSOLE"
+      jars          = Dir["#{ZKHOME}/lib/*.jar", "#{ZKHOME}/*.jar"].join(":")
+      classpath     = "#{zoocfgdir}:#{jars}"
+      zoomain       = "org.apache.zookeeper.server.quorum.QuorumPeerMain"
+      jvmflags      = ""
+
+      # build the java command line
+      cmd ="java  \'-Dzookeeper.log.dir=#{log_dir}\' \'-Dzookeeper.root.logger=#{root_logger}\' -cp \'#{classpath}\' #{jvmflags} #{zoomain} #{zoocfgpath}"  
+
+      # if there is a zookeeper process still running 
+      # then kill it now
+      kill_if_running(pid_file)
+
+      # write the zookeeper config file
+      write_file(zoocfgpath, cfg)
+
+      # run the command
+      io = IO.popen(cmd, "r")
+      write_file(pid_file, io.pid)
+
+      # wait until we can make a connection to zookeeper
+      if opts[:wait_start] == true
+        stat = status("localhost", cfg[:clientPort])
       end
 
-      nil
+      # return the pid
+      io.pid 
+    end
+
+    #
+    # Stop the process using the pid from the pidfile
+    # 
+    # Parameters:
+    # - opts is a hash of options. Use :pid_dir to specify the location
+    #   of the pid file if you used a different location on startup.
+    #   NOTE: Use ABSOLUTE paths
+    #
+    def self.stop(opts = {})
+      pid_dir = "#{ZKHOME}/data/localhost"
+      pid_dir = opts[:pid_dir] if opts[:pid_dir]
+
+      kill_if_running(pid_dir + "/#{ZKPidFileName}", :force => true)
     end
 
     def self.wait_til_started
-      while !running?
-        sleep 1
+      while status == {} 
       end
-    end
-
-    def self.wait_til_stopped
-      while running?
-        sleep 1
-      end
-    end
-
-    def self.stop(config_dir=nil)
-      export_zoo_cfg = ""
-      export_zoo_cfg = "export ZOOCFGDIR='#{config_dir}' && " if !config_dir.nil?
-
-      `#{export_zoo_cfg} cd #{ZKHOME} && ./bin/zkServer.sh stop`
-      # FileUtils.rm pid_file if File.exist? pid_file
     end
 
     def self.status(host="localhost", port=2181)
-      retryable(:tries => 3, :on => Exception) do
+      retryable(:tries => 5, :on => Exception) do
         read_stat(host, port)
       end
     end
@@ -66,14 +171,6 @@ module ZK
     # =======
     private
     # =======
-
-    def self.data_dir
-      "#{ZKHOME}/data/localhost"
-    end
-
-    def self.pid_file
-      data_dir + "/zookeeper_server.pid"
-    end
 
     #
     # Read Zookeeper status from socket
@@ -107,15 +204,11 @@ module ZK
       begin
         return yield
       rescue retry_exception
+        sleep 1
         retry if (retries -= 1) > 0
       end
 
       yield
-    end
-
-    def self.set_log_level
-      require ZKHOME + '/lib/log4j-1.2.15.jar'
-      Java::org.apache.log4j.Logger.getRootLogger().set_level(Java::org.apache.log4j.Level::OFF)
     end
 
   end

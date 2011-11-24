@@ -5,12 +5,10 @@ describe ZK::ZookeeperServer do
   context "when the zookeeper service is running" do
     before  do
       ZK::ZookeeperServer.start
-      ZK::ZookeeperServer.wait_til_started
     end
 
     after  do
       ZK::ZookeeperServer.stop
-      ZK::ZookeeperServer.wait_til_stopped
       ZK::ZookeeperServer.running?.should eql(false)
     end
 
@@ -23,18 +21,25 @@ describe ZK::ZookeeperServer do
     end
   end
 
+  context "when i want to run Zookeeper in an ensemble configuration" do
+    it "should be possible to give it a custom configuration" do
+    end
+  end
+
   context "when i want to use a different configuration (port)" do
 
     it "should be possible to specify a config file on start" do
-      config_dir = File.dirname(__FILE__) + "/zoo_alternative_cfg"
+      cfg              = {}
+      cfg[:clientPort] = 2182
+      opts             = {}
+      opts[:conf_dir]  = File.expand_path(File.dirname(__FILE__)) + "/zoo_alternative_cfg"
 
-      ZK::ZookeeperServer.start(config_dir)
-      ZK::ZookeeperServer.wait_til_started
+      ZK::ZookeeperServer.start(cfg, opts)
 
-      ZK::ZookeeperServer.status("localhost", 2182)["mode"].should eql("standalone")
+      stat = ZK::ZookeeperServer.status("localhost", 2182)
+      stat["mode"].should eql("standalone")
 
-      ZK::ZookeeperServer.stop(config_dir)
-      ZK::ZookeeperServer.wait_til_stopped
+      ZK::ZookeeperServer.stop
       ZK::ZookeeperServer.running?.should eql(false)
     end
   end
