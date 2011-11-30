@@ -17,7 +17,8 @@ describe ZK::ZookeeperServer do
     end
 
     it "makes sure to get a connection to the Zookeeper Server" do
-      ZK::ZookeeperServer.status["mode"].should eql("standalone")
+      stat = ZK::ZookeeperServer.status
+      stat["mode"].should eql("standalone")
     end
   end
 
@@ -34,10 +35,12 @@ describe ZK::ZookeeperServer do
 
       opts            = { :myid => "1" }
       opts[:conf_dir] = File.expand_path(File.dirname(__FILE__)) + "/zoo_ensemble_cfg"
+      opts[:pid_dir]  = File.expand_path(File.dirname(__FILE__)) + "/zoo_pid"
 
       ZK::ZookeeperServer.start(cfg, opts)
       ZK::ZookeeperServer.status
-      ZK::ZookeeperServer.stop(cfg)
+      File.exists?( opts[:pid_dir] + "/zookeeper.pid" ).should eql(true)
+      ZK::ZookeeperServer.stop(opts)
       ZK::ZookeeperServer.running?.should eql(false)
     end
   end

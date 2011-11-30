@@ -113,7 +113,10 @@ module ZK
       zoocfgdir     = opts[:conf_dir] || "#{ZKHOME}/conf"
       zoocfg        = "zoo.cfg"
       zoocfgpath    = "#{zoocfgdir}/#{zoocfg}"
-      pid_file      = "#{data_dir}/" + ZKPidFileName
+
+      opts[:pid_dir] = data_dir if !opts[:pid_dir]
+      FileUtils.mkdir_p opts[:pid_dir]
+      pid_file      = "#{opts[:pid_dir]}/" + ZKPidFileName
 
       # JAVA stuff
       root_logger   = "INFO,CONSOLE"
@@ -163,7 +166,7 @@ module ZK
     #
     def self.stop(opts = {})
       pid_dir = "#{ZKHOME}/data/localhost"
-      pid_dir = opts[:dataDir] if opts[:dataDir]
+      pid_dir = opts[:pid_dir] if opts[:pid_dir]
 
       kill_if_running(pid_dir + "/#{ZKPidFileName}", :force => true)
     end
