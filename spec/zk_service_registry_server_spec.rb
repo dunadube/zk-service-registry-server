@@ -42,6 +42,7 @@ describe ZK::ZookeeperServer do
       File.exists?( opts[:pid_dir] + "/zookeeper.pid" ).should eql(true)
       ZK::ZookeeperServer.stop(opts)
       ZK::ZookeeperServer.running?.should eql(false)
+      File.exists?( opts[:pid_dir] + "/zookeeper.pid" ).should eql(false)
     end
   end
 
